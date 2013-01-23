@@ -150,9 +150,9 @@ def complete_process(request, backend, *args, **kwargs):
             if new_user_redirect and is_new:
                 url = new_user_redirect
             else:
-                url = redirect_value or \
-                      backend_setting(backend,
+                url =  backend_setting(backend,
                                       'SOCIAL_AUTH_LOGIN_REDIRECT_URL') or \
+                       redirect_value or \
                       DEFAULT_REDIRECT
         else:
             msg = setting('SOCIAL_AUTH_INACTIVE_USER_MESSAGE', None)
