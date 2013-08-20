@@ -8,13 +8,12 @@ from urllib2 import urlopen
 from cgi import parse_qsl
 
 from collections import defaultdict
+from datetime import timedelta, tzinfo
 
 from django.conf import settings
 from django.db.models import Model
-from django.db.models.loading import get_model
 from django.contrib.contenttypes.models import ContentType
 from django.utils.functional import SimpleLazyObject
-from django.utils.importlib import import_module
 
 
 try:
@@ -40,6 +39,26 @@ except ImportError:  # django < 1.4
 
 
 try:
+    from django.utils.timezone import utc as django_utc
+except ImportError:  # django < 1.4
+    class UTC(tzinfo):
+        """UTC implementation taken from django 1.4."""
+        def __repr__(self):
+            return '<UTC>'
+
+        def utcoffset(self, dt):
+            return timedelta(0)
+
+        def tzname(self, dt):
+            return 'UTC'
+
+        def dst(self, dt):
+            return timedelta(0)
+
+    django_utc = UTC()
+
+
+try:
     from django.utils.crypto import constant_time_compare as ct_compare
 except ImportError:  # django < 1.4
     def ct_compare(val1, val2):
@@ -53,18 +72,16 @@ except ImportError:  # django < 1.4
 
 try:
     from django.utils.functional import empty
-    empty  # placate pyflakes
 except ImportError:  # django < 1.4
     empty = None
 
 
 get_random_string = random_string
 constant_time_compare = ct_compare
+utc = django_utc
 
-LEAVE_CHARS = getattr(settings, 'SOCIAL_AUTH_LOG_SANITIZE_LEAVE_CHARS', 4)
 
-
-def sanitize_log_data(secret, data=None, leave_characters=LEAVE_CHARS):
+def sanitize_log_data(secret, data=None, leave_characters=4):
     """
     Clean private/secret data from log statements and other data.
 
@@ -275,44 +292,6 @@ def dsa_urlopen(*args, **kwargs):
 
 def get_backend_name(backend):
     return getattr(getattr(backend, 'AUTH_BACKEND', backend), 'name', None)
-
-
-def get_custom_user_model_for_migrations():
-    user_model = getattr(settings, 'SOCIAL_AUTH_USER_MODEL', None) or \
-        getattr(settings, 'AUTH_USER_MODEL', None) or 'auth.User'
-    if user_model != 'auth.User':
-        # In case of having a proxy model defined as USER_MODEL
-        # We use auth.User instead to prevent migration errors
-        # Since proxy models aren't present in migrations
-        if get_model(*user_model.split('.'))._meta.proxy:
-            user_model = 'auth.User'
-    return user_model
-
-
-def custom_user_frozen_models(user_model):
-    migration_name = getattr(settings, 'INITIAL_CUSTOM_USER_MIGRATION',
-                             '0001_initial.py')
-    if user_model != 'auth.User':
-        from south.migration.base import Migrations
-        from south.exceptions import NoMigrations
-        from south.creator.freezer import freeze_apps
-        user_app, user_model = user_model.split('.')
-        try:
-            user_migrations = Migrations(user_app)
-        except NoMigrations:
-            extra_model = freeze_apps(user_app)
-        else:
-            initial_user_migration = user_migrations.migration(migration_name)
-            extra_model = initial_user_migration.migration_class().models
-    else:
-        extra_model = {}
-    return extra_model
-
-
-def module_member(name):
-    mod, member = name.rsplit('.', 1)
-    module = import_module(mod)
-    return getattr(module, member)
 
 
 if __name__ == '__main__':
